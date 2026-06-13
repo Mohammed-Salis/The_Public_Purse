@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Public Purse - Integrated Accountability Dashboard</title>
+    <!-- Integrated CSV Parsing Engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a1424;
+            --bg-secondary: #112240;
+            --bg-card: #172a45;
+            --accent-gold: #f1b815;
+            --accent-gold-hover: #d4a012;
+            --text-main: #f8f9fa;
+            --text-muted: #a8b2d1;
+            --border-glow: rgba(241, 184, 21, 0.15);
+            --ghana-red: #ea4335;
+            --ghana-gold: #fbbc05;
+            --ghana-green: #34a853;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { background-color: var(--bg-primary); color: var(--text-main); min-height: 100vh; line-height: 1.6; }
+        
+        .flag-bar { height: 4px; width: 100%; display: flex; }
+        .flag-red { background-color: var(--ghana-red); flex: 1; }
+        .flag-gold { background-color: var(--ghana-gold); flex: 1; }
+        .flag-green { background-color: var(--ghana-green); flex: 1; }
+
+        header { background-color: rgba(10, 20, 36, 0.95); border-bottom: 1px solid rgba(168, 178, 209, 0.1); position: sticky; top: 0; z-index: 100; backdrop-filter: blur(10px); }
+        .nav-container { max-width: 1400px; margin: 0 auto; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .logo-area { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text-main); }
+        .logo-text { font-weight: 700; font-size: 1.25rem; letter-spacing: -0.5px; }
+        .logo-text span { color: var(--accent-gold); }
+        
+        .nav-links { display: flex; gap: 24px; list-style: none; }
+        .nav-links a { color: var(--text-muted); text-decoration: none; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: color 0.3s; }
+        .nav-links a:hover, .nav-links a.active { color: var(--accent-gold); }
+
+        .app-view { display: none; }
+        .app-view.active-view { display: block; }
+
+        #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-primary); z-index: 1000; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 20px; transition: opacity 0.5s ease; }
+        .spinner { width: 50px; height: 50px; border: 3px solid rgba(241, 184, 21, 0.1); border-radius: 50%; border-top-color: var(--accent-gold); animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .hero-banner { background: linear-gradient(135deg, #070f1e 0%, #112240 100%); border-bottom: 1px solid rgba(241, 184, 21, 0.1); padding: 4.5rem 2rem; }
+        .hero-container { max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 40px; align-items: center; }
+        .hero-title { font-size: 3.5rem; font-weight: 800; line-height: 1.1; margin-bottom: 0.5rem; }
+        .hero-title span { color: var(--accent-gold); display: block; }
+        .hero-subtitle { font-size: 1.1rem; text-transform: uppercase; letter-spacing: 2px; color: var(--text-muted); margin-bottom: 1.5rem; font-weight: 600; }
+        .hero-description { color: var(--text-muted); font-size: 1.1rem; max-width: 520px; margin-bottom: 2rem; }
+
+        .summary-strip { max-width: 1400px; margin: -30px auto 3rem auto; padding: 0 2rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; position: relative; z-index: 10; }
+        .metric-card { background-color: var(--bg-secondary); border: 1px solid rgba(168, 178, 209, 0.1); border-radius: 8px; padding: 1.5rem; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+        .metric-label { font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.5rem; }
+        .metric-value { font-size: 1.75rem; font-weight: 700; color: var(--text-main); }
+        .metric-value.highlight { color: var(--accent-gold); }
+
+        .dashboard-section { max-width: 1400px; margin: 0 auto; padding: 0 2rem 5rem 2rem; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; border-bottom: 1px solid rgba(168, 178, 209, 0.1); padding-bottom: 1rem; }
+        .section-title h2 { font-size: 1.75rem; font-weight: 700; }
+        .section-title p { color: var(--text-muted); font-size: 0.95rem; }
+
+        .tab-group { display: flex; background-color: var(--bg-secondary); padding: 4px; border-radius: 6px; gap: 4px; }
+        .tab-btn { background: none; border: none; color: var(--text-muted); padding: 8px 16px; font-size: 0.9rem; font-weight: 600; border-radius: 4px; cursor: pointer; }
+        .tab-btn.active { background-color: var(--accent-gold); color: var(--bg-primary); }
+
+        .chart-workspace { background-color: var(--bg-secondary); border: 1px solid rgba(168, 178, 209, 0.1); border-radius: 12px; padding: 2.5rem; display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; }
+        .bar-wrapper { display: flex; flex-direction: column; gap: 6px; }
+        .bar-label-row { display: flex; justify-content: space-between; font-size: 0.9rem; }
+        .bar-track { height: 24px; background-color: var(--bg-card); border-radius: 4px; overflow: hidden; }
+        .bar-fill { height: 100%; background: linear-gradient(90deg, #b8860b 0%, var(--accent-gold) 100%); width: 0%; transition: width 1s ease-out; }
+
+        .chart-meta-panel { background-color: var(--bg-card); border-radius: 8px; padding: 2rem; border-left: 3px solid var(--accent-gold); }
+        .meta-heading { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.75rem; }
+        .meta-text { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem; }
+        .insight-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+        .insight-item { display: flex; align-items: flex-start; gap: 10px; font-size: 0.9rem; color: var(--text-muted); }
+        .insight-item::before { content: '➔'; color: var(--accent-gold); }
+
+        .workplace-wrapper { max-width: 1400px; margin: 2rem auto; padding: 0 2rem 5rem 2rem; display: grid; grid-template-columns: 350px 1fr; gap: 30px; }
+        .directory-panel { background-color: var(--bg-secondary); border: 1px solid rgba(168, 178, 209, 0.1); border-radius: 8px; padding: 1.5rem; height: fit-content; }
+        .directory-title { font-size: 0.9rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 1.2rem; border-bottom: 1px solid rgba(168, 178, 209, 0.1); padding-bottom: 0.5rem; }
+        .directory-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+        .directory-item { background-color: var(--bg-card); border: 1px solid transparent; border-radius: 6px; padding: 1rem; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .directory-item.active { border-color: var(--accent-gold); background-color: rgba(241, 184, 21, 0.05); }
+        .dir-name { font-size: 0.9rem; font-weight: 600; }
+        .dir-value { font-size: 0.95rem; font-weight: 700; color: var(--accent-gold); }
+
+        .analysis-panel { display: flex; flex-direction: column; gap: 24px; }
+        .panel-card { background-color: var(--bg-secondary); border: 1px solid rgba(168, 178, 209, 0.1); border-radius: 8px; padding: 2.5rem; }
+        .ministry-header-row { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid rgba(168, 178, 209, 0.1); padding-bottom: 1.5rem; margin-bottom: 1.5rem; }
+        .m-title h2 { font-size: 2rem; font-weight: 800; }
+        .m-allocation-badge { background-color: rgba(241, 184, 21, 0.1); border: 1px solid var(--accent-gold); padding: 0.75rem 1.5rem; border-radius: 6px; text-align: right; }
+        .badge-lbl { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); }
+        .badge-val { font-size: 1.75rem; font-weight: 800; color: var(--accent-gold); }
+
+        .deliverable-section-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 8px; }
+        .deliverable-section-title::before { content: ''; display: inline-block; width: 4px; height: 18px; background-color: var(--accent-gold); }
+        .deliverable-grid { display: flex; flex-direction: column; gap: 20px; }
+        .deliverable-row { background-color: var(--bg-card); border-radius: 6px; padding: 1.5rem; border-left: 4px solid var(--text-muted); }
+        .deliv-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+        .deliv-name { font-size: 1.05rem; font-weight: 600; }
+        .deliv-cost { font-size: 1.1rem; font-weight: 700; color: var(--accent-gold); }
+        .progress-container { height: 8px; background-color: var(--bg-primary); border-radius: 4px; overflow: hidden; }
+        .progress-bar { height: 100%; background-color: var(--accent-gold); width: 0%; transition: width 0.8s ease-out; }
+
+        .matrix-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.95rem; }
+        .matrix-table th { text-align: left; padding: 12px; color: var(--text-muted); border-bottom: 2px solid rgba(168, 178, 209, 0.1); text-transform: uppercase; font-size: 0.8rem; }
+        .matrix-table td { padding: 14px 12px; border-bottom: 1px solid rgba(168, 178, 209, 0.05); }
+        .status-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
+        .status-pill.up { background-color: rgba(52, 168, 83, 0.15); color: var(--ghana-green); }
+        .status-pill.down { background-color: rgba(234, 67, 53, 0.15); color: var(--ghana-red); }
+
+        /* Media & Resource Elements CSS */
+        .media-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 24px; margin-top: 1rem; }
+        .resource-card { background-color: var(--bg-secondary); border: 1px solid rgba(168, 178, 209, 0.1); border-radius: 8px; padding: 1.75rem; display: flex; flex-direction: column; justify-content: space-between; gap: 20px; transition: border-color 0.3s; }
+        .resource-card:hover { border-color: rgba(241, 184, 21, 0.4); }
+        .res-type { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; margin-bottom: 0.75rem; width: fit-content; letter-spacing: 0.5px; }
+        .res-type.video { background-color: rgba(241, 184, 21, 0.15); color: var(--accent-gold); }
+        .res-type.document { background-color: rgba(52, 168, 83, 0.15); color: var(--ghana-green); }
+        .res-title { font-size: 1.25rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem; line-height: 1.3; }
+        .res-desc { color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; }
+        .res-action-btn { display: block; width: 100%; text-align: center; background-color: var(--bg-card); border: 1px solid rgba(168, 178, 209, 0.15); color: var(--text-main); font-weight: 600; font-size: 0.9rem; padding: 12px; border-radius: 6px; text-decoration: none; transition: all 0.3s; }
+        .res-action-btn:hover { background-color: var(--accent-gold); color: var(--bg-primary); border-color: var(--accent-gold); }
+
+        .cta-scrutiny { background: linear-gradient(135deg, var(--bg-card) 0%, #0d1e36 100%); border: 1px solid rgba(241, 184, 21, 0.1); border-radius: 8px; padding: 2.5rem; text-align: center; margin: 3rem auto 0 auto; max-width: 1400px; width: calc(100% - 4rem); }
+        .cta-btn { background-color: transparent; color: var(--accent-gold); border: 2px solid var(--accent-gold); padding: 12px 28px; font-size: 1rem; font-weight: 700; border-radius: 6px; cursor: pointer; margin-top: 1.5rem; }
+
+        footer { background-color: #070f1e; border-top: 1px solid rgba(168, 178, 209, 0.1); padding: 4rem 2rem 2rem 2rem; margin-top: 5rem; }
+        .footer-container { max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 1.4fr 0.8fr 0.8fr; gap: 40px; }
+        .footer-brand p { color: var(--text-muted); font-size: 0.9rem; margin-top: 1rem; max-width: 340px; }
+        .footer-col h4 { color: var(--text-main); font-size: 0.95rem; text-transform: uppercase; margin-bottom: 1.25rem; }
+        .footer-col p { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 8px; }
+        .social-link-group { display: flex; flex-direction: column; gap: 10px; }
+        .social-link { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 8px; }
+        .footer-bottom { max-width: 1400px; margin: 3rem auto 0 auto; padding-top: 1.5rem; border-top: 1px solid rgba(168, 178, 209, 0.05); text-align: center; font-size: 0.8rem; color: var(--text-muted); }
+
+        @media (max-width: 950px) {
+            .hero-container, .chart-workspace, .workplace-wrapper, .footer-container { grid-template-columns: 1fr !important; }
+            .summary-strip { grid-template-columns: 1fr; margin-top: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <p style="color: var(--text-muted); font-weight: 600; letter-spacing: 1px;">COMPILING CIVIC MATRIX ASSETS...</p>
+    </div>
+
+    <div class="flag-bar"><div class="flag-red"></div><div class="flag-gold"></div><div class="flag-green"></div></div>
+
+    <header>
+        <div class="nav-container">
+            <a href="#" class="logo-area" onclick="switchMainSection('national-overview')">
+                <div class="logo-text">The Public<span>Purse</span></div>
+            </a>
+            <ul class="nav-links">
+                <li><a id="nav-national" class="active" onclick="switchMainSection('national-overview')">National Budget Overview</a></li>
+                <li><a id="nav-ministry" onclick="switchMainSection('ministry-deepdive')">Ministry Deep-Dives</a></li>
+                <li><a id="nav-media" onclick="switchMainSection('media-resources')">Media & Resources</a></li>
+            </ul>
+        </div>
+    </header>
+
+    <!-- VIEW 1: NATIONAL OVERVIEW -->
+    <div id="national-overview" class="app-view active-view">
+        <section class="hero-banner">
+            <div class="hero-container">
+                <div>
+                    <h1 class="hero-title">Public Money.<span>Public Scrutiny.</span></h1>
+                    <p class="hero-subtitle">Budget Cycle 2026</p>
+                    <p class="hero-description">Structural budget frameworks broken down into visual indices.</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="summary-strip">
+            <div class="metric-card"><p class="metric-label">Planned Expenditure</p><p class="metric-value" id="meta-expenditure">GH¢ 0.0B</p></div>
+            <div class="metric-card"><p class="metric-label">Projected Revenue</p><p class="metric-value highlight" id="meta-revenue">GH¢ 0.0B</p></div>
+            <div class="metric-card"><p class="metric-label">Projected Fiscal Deficit</p><p class="metric-value" style="color: var(--ghana-red);" id="meta-deficit">GH¢ 0.0B</p></div>
+        </div>
+
+        <main class="dashboard-section">
+            <div class="section-header">
+                <div class="section-title"><h2>Interactive Budget Architecture</h2></div>
+                <div class="tab-group">
+                    <button class="tab-btn active" onclick="switchHighLevelTab('expenditure', this)">Where The Money Goes</button>
+                    <button class="tab-btn" onclick="switchHighLevelTab('revenue', this)">Where The Money Comes From</button>
+                </div>
+            </div>
+            <div class="chart-workspace">
+                <div class="chart-visual-container" id="chartVisualTrack"></div>
+                <div class="chart-meta-panel" id="chartMetaPanel"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- VIEW 2: MINISTRY DEEP-DIVE -->
+    <div id="ministry-deepdive" class="app-view">
+        <section class="workplace-wrapper">
+            <aside class="directory-panel">
+                <h3 class="directory-title">Ministry Index</h3>
+                <ul class="directory-list" id="directoryList"></ul>
+            </aside>
+            <div class="analysis-panel">
+                <div class="panel-card" id="mainAnalysisCard"></div>
+                <div class="audit-table-card">
+                    <h3 class="deliverable-section-title">Year-on-Year Trend Tracking</h3>
+                    <table class="matrix-table">
+                        <thead><tr><th>Fiscal Cycle</th><th>Allocated Funds</th><th>Structural Shift</th><th>Audit Status</th></tr></thead>
+                        <tbody id="trendTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- NEW VIEW 3: MEDIA & RESOURCES -->
+    <div id="media-resources" class="app-view">
+        <main class="dashboard-section" style="padding-top: 4.5rem;">
+            <div class="section-header">
+                <div class="section-title">
+                    <h2>Media & Official Resources</h2>
+                    <p>Access downloadable tracking sheets, video presentations, and legal gazettes directly linked to the public ledger.</p>
+                </div>
+            </div>
+            <div class="media-gallery" id="mediaResourcesGrid">
+                <!-- Data dynamically streams directly from media_resources.csv -->
+            </div>
+        </main>
+    </div>
+
+    <section class="cta-scrutiny">
+        <h3>Ready to execute citizen tracking in your specific district?</h3>
+        <button class="cta-btn">Initiate Project Audit Report</button>
+    </section>
+
+    <footer>
+        <div class="footer-container">
+            <div class="footer-brand"><div class="logo-text">The Public<span>Purse</span></div><p>Open governance budget tracking infrastructure.</p></div>
+            <div class="footer-col">
+                <h4>Platform Contacts</h4>
+                <p>📧 info@publicpurse.gov.gh</p>
+                <p>📞 +233 (0) 302 555 123</p>
+            </div>
+            <div class="footer-col">
+                <h4>Follow the Scrutiny</h4>
+                <div class="social-link-group">
+                    <a href="#" class="social-link"><span style="color:var(--accent-gold);">𝕏</span> Twitter / X</a>
+                    <a href="#" class="social-link"><span style="color:var(--accent-gold);">💼</span> LinkedIn</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">&copy; 2026 The Public Purse Platform.</div>
+    </footer>
+
+    <!-- ==========================================================================
+       DYNAMIC FILE INJECTION ENGINE
+       ========================================================================== -->
+    <script>
+        let highLevelBudgetData = { expenditure: { title: "Strategic Spending Priorities", desc: "Loading...", insights: [], bars: [] }, revenue: { title: "Resource Mobilization Priorities", desc: "Loading...", insights: [], bars: [] } };
+        let ministriesData = [];
+        let activeTab = 'expenditure';
+
+        // Additional file storage placeholders for custom scripting expansions
+        let globalExtraData1 = [];
+        let globalExtraData2 = [];
+
+        async function initializePlatformData() {
+            try {
+                // Core dataset resolution using absolute dot notation root anchoring
+                const [resFramework, resMinistries, resDeliverables, resMedia] = await Promise.all([
+                    fetch('./national_framework.csv').then(res => { if(!res.ok) throw new Error(); return res.text(); }),
+                    fetch('./ministries_master.csv').then(res => { if(!res.ok) throw new Error(); return res.text(); }),
+                    fetch('./deliverables.csv').then(res => { if(!res.ok) throw new Error(); return res.text(); }),
+                    fetch('./media_resources.csv').then(res => { if(!res.ok) throw new Error(); return res.text(); })
+                ]);
+
+                // Asynchronous hooks for additional CSV files 2 and 3 (Safeguarded from blocking runtime crashes if uncreated)
+                fetch('./extra_data_2.csv').then(res => res.ok ? res.text() : '').then(txt => { if(txt) globalExtraData1 = Papa.parse(txt, {header:true}).data; });
+                fetch('./extra_data_3.csv').then(res => res.ok ? res.text() : '').then(txt => { if(txt) globalExtraData2 = Papa.parse(txt, {header:true}).data; });
+
+                processNationalFramework(resFramework);
+                processMinistriesData(resMinistries, resDeliverables);
+                processMediaResources(resMedia);
+
+                // Disable loading blocker
+                document.getElementById('loading-overlay').style.opacity = '0';
+                setTimeout(() => document.getElementById('loading-overlay').style.display = 'none', 500);
+
+                renderHighLevelDashboard(activeTab);
+                initMinistryDirectory();
+            } catch (error) {
+                document.getElementById('loading-overlay').innerHTML = `<p style="color:var(--ghana-red); font-weight:bold; font-family:monospace; text-align:center; padding:20px;">CRITICAL LINKAGE ERROR:<br><br>The dashboard failed to read one or more baseline sheets from root folder.<br>Confirm that national_framework.csv, ministries_master.csv, deliverables.csv, and media_resources.csv exist.</p>`;
+            }
+        }
+
+        function processNationalFramework(csvText) {
+            const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data;
+            highLevelBudgetData.expenditure.bars = [];
+            highLevelBudgetData.revenue.bars = [];
+            highLevelBudgetData.expenditure.insights = [];
+            highLevelBudgetData.revenue.insights = [];
+
+            parsed.forEach(row => {
+                const stream = row['Stream Type']?.trim();
+                if (stream === 'expenditure' || stream === 'revenue') {
+                    highLevelBudgetData[stream].bars.push({
+                        label: row['Bar Label'],
+                        value: row['Display Value'],
+                        percent: parseInt(row['Numerical Percentage']) || 0
+                    });
+                } else if (stream === 'meta') {
+                    const label = row['Bar Label']?.trim();
+                    if(document.getElementById(`meta-${label}`)) {
+                        document.getElementById(`meta-${label}`).innerText = row['Display Value'];
+                    }
+                } else if (stream === 'insight_expenditure') {
+                    highLevelBudgetData.expenditure.insights.push(row['Bar Label']);
+                } else if (stream === 'insight_revenue') {
+                    highLevelBudgetData.revenue.insights.push(row['Bar Label']);
+                }
+            });
+            highLevelBudgetData.expenditure.desc = "Real-time structural spending configurations derived directly from official gazettes.";
+            highLevelBudgetData.revenue.desc = "Domestic revenue mobilization benchmarks mapped across transactional tax frameworks.";
+        }
+
+        function processMinistriesData(masterCsv, deliverablesCsv) {
+            const master = Papa.parse(masterCsv, { header: true, skipEmptyLines: true }).data;
+            const deliverables = Papa.parse(deliverablesCsv, { header: true, skipEmptyLines: true }).data;
+
+            ministriesData = master.map(m => {
+                const mId = m['Ministry ID']?.trim();
+                const matchedDelivs = deliverables.filter(d => d['Ministry ID']?.trim() === mId).map(d => ({
+                    name: d['Project / Deliverable Line Item'],
+                    cost: d['Allocated Cost'],
+                    rawPct: parseInt(d['Percentage of Ministry Share']) || 0
+                }));
+
+                return {
+                    id: mId,
+                    name: m['Ministry Name'],
+                    total2026: m['2026 Budget'],
+                    total2025: m['2025 Budget'],
+                    variance: m['Variance %'],
+                    direction: m['Trend Direction']?.trim() || 'up',
+                    focus: m['Core Objective / Focus'],
+                    deliverables: matchedDelivs
+                };
+            });
+        }
+
+        function processMediaResources(csvText) {
+            const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data;
+            const grid = document.getElementById('mediaResourcesGrid');
+            if(!grid) return;
+            grid.innerHTML = '';
+
+            parsed.forEach(row => {
+                const type = row['Resource Type']?.toLowerCase().trim() || 'document';
+                const title = row['Title'] || 'Missing Resource Title';
+                const desc = row['Description'] || 'No detailed overview provided.';
+                const targetUrl = row['Target Link'] || '#';
+
+                const card = document.createElement('div');
+                card.className = 'resource-card';
+                card.innerHTML = `
+                    <div>
+                        <span class="res-type ${type}">${type}</span>
+                        <h3 class="res-title">${title}</h3>
+                        <p class="res-desc">${desc}</p>
+                    </div>
+                    <a href="${targetUrl}" target="_blank" class="res-action-btn">
+                        ${type === 'video' ? '▶ Play Media Module' : '📥 Download Asset Archive'}
+                    </a>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function switchMainSection(targetSectionId) {
+            document.querySelectorAll('.nav-links a').forEach(link => link.classList.remove('active'));
+            if(targetSectionId === 'national-overview') document.getElementById('nav-national').classList.add('active');
+            if(targetSectionId === 'ministry-deepdive') document.getElementById('nav-ministry').classList.add('active');
+            if(targetSectionId === 'media-resources') document.getElementById('nav-media').classList.add('active');
+
+            document.querySelectorAll('.app-view').forEach(view => view.classList.remove('active-view'));
+            document.getElementById(targetSectionId).classList.add('active-view');
+
+            if (targetSectionId === 'national-overview') renderHighLevelDashboard(activeTab);
+            if (targetSectionId === 'ministry-deepdive' && ministriesData.length > 0) selectMinistry(ministriesData[0].id);
+        }
+
+        function renderHighLevelDashboard(key) {
+            activeTab = key;
+            const currentSet = highLevelBudgetData[key];
+            const visualTrack = document.getElementById('chartVisualTrack');
+            if(!visualTrack) return;
+            visualTrack.innerHTML = '';
+            
+            currentSet.bars.forEach(bar => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'bar-wrapper';
+                wrapper.innerHTML = `
+                    <div class="bar-label-row"><span>${bar.label}</span><span style="color:var(--accent-gold); font-weight:700;">${bar.value}</span></div>
+                    <div class="bar-track"><div class="bar-fill" style="width: 0%"></div></div>
+                `;
+                visualTrack.appendChild(wrapper);
+                setTimeout(() => { wrapper.querySelector('.bar-fill').style.width = bar.percent + '%'; }, 50);
+            });
+
+            let insightsHTML = '';
+            currentSet.insights.forEach(ins => { insightsHTML += `<li class="insight-item">${ins}</li>`; });
+            document.getElementById('chartMetaPanel').innerHTML = `
+                <h3 class="meta-heading">${currentSet.title}</h3><p class="meta-text">${currentSet.desc}</p>
+                <ul class="insight-list">${insightsHTML}</ul>
+            `;
+        }
+
+        function switchHighLevelTab(key, clickElement) {
+            document.querySelectorAll('#national-overview .tab-btn').forEach(btn => btn.classList.remove('active'));
+            clickElement.classList.add('active');
+            renderHighLevelDashboard(key);
+        }
+
+        function initMinistryDirectory() {
+            const listContainer = document.getElementById('directoryList');
+            if(!listContainer || ministriesData.length === 0) return;
+            listContainer.innerHTML = '';
+
+            ministriesData.forEach((m, idx) => {
+                const li = document.createElement('li');
+                li.className = `directory-item ${idx === 0 ? 'active' : ''}`;
+                li.id = `dir-${m.id}`;
+                li.onclick = () => selectMinistry(m.id);
+                li.innerHTML = `<span class="dir-name">${m.name}</span><span class="dir-value">${m.total2026}</span>`;
+                listContainer.appendChild(li);
+            });
+            if(ministriesData.length > 0) selectMinistry(ministriesData[0].id);
+        }
+
+        function selectMinistry(id) {
+            document.querySelectorAll('.directory-item').forEach(item => item.classList.remove('active'));
+            if(document.getElementById(`dir-${id}`)) document.getElementById(`dir-${id}`).classList.add('active');
+            const itemData = ministriesData.find(m => m.id === id);
+            if (itemData) renderMinistryAnalysisCard(itemData);
+        }
+
+        function renderMinistryAnalysisCard(m) {
+            let deliverablesHTML = '';
+            m.deliverables.forEach(d => {
+                deliverablesHTML += `
+                    <div class="deliverable-row">
+                        <div class="deliv-meta"><span class="deliv-name">${d.name}</span><span class="deliv-cost">${d.cost}</span></div>
+                        <div class="progress-container"><div class="progress-bar" id="bar-${m.id}-${d.rawPct}" style="width:0%"></div></div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('mainAnalysisCard').innerHTML = `
+                <div class="ministry-header-row">
+                    <div class="m-title"><h2>${m.name}</h2><p>Objective: ${m.focus}</p></div>
+                    <div class="m-allocation-badge"><div class="badge-lbl">2026 Appropriation</div><div class="badge-val">${m.total2026}</div></div>
+                </div>
+                <h3 class="deliverable-section-title">Matched Line-Item Deliverables Matrix</h3>
+                <div class="deliverable-grid">${deliverablesHTML}</div>
+            `;
+
+            m.deliverables.forEach(d => {
+                setTimeout(() => { if(document.getElementById(`bar-${m.id}-${d.rawPct}`)) document.getElementById(`bar-${m.id}-${d.rawPct}`).style.width = d.rawPct + '%'; }, 50);
+            });
+
+            document.getElementById('trendTableBody').innerHTML = `
+                <tr><td>2025 Allocation Envelope</td><td>${m.total2025}</td><td>Baseline Reference</td><td><span class="status-pill" style="background:rgba(168,178,209,0.1); color:var(--text-muted)">Archived</span></td></tr>
+                <tr><td>2026 Appropriation Package</td><td><b>${m.total2026}</b></td><td><span class="status-pill ${m.direction}">${m.variance} Shift</span></td><td><span class="status-pill up">Passed</span></td></tr>
+            `;
+        }
+
+        window.addEventListener('DOMContentLoaded', initializePlatformData);
+    </script>
+</body>
+</html>
